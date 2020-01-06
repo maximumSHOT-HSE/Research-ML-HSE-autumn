@@ -2,6 +2,8 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.io.wavfile
+from PIL import Image
 from matplotlib import cm
 
 
@@ -139,3 +141,70 @@ def save_train_graph(session_dir, session_id, history):
 
 def save_statistics(session_dir, session_id, history):
     pass
+
+
+def load_audio(path: str):
+    rate, signal = scipy.io.wavfile.read(path)
+    signal = np.copy(signal).astype(dtype=np.float32)
+
+    _min = np.min(signal)
+    signal -= _min
+    _max = np.max(signal)
+    if _max > 0:
+        signal /= _max
+
+    return rate, signal
+
+
+# loads signal, normalize to [0, 1]
+# returns (rate, signal, labels)
+def load_labeled_audio(path: str):
+    if not path.endswith('.wav'):
+        raise Exception(f'Unrecognized audio format: expected .wav, but found = {path}')
+
+    rate, signal = load_audio(path)
+    labels = scipy.io.loadmat(path[:-4] + '.mat')['y_label'].astype(np.long)
+
+    if len(signal) != len(labels):
+        raise Exception(f'Signal and labels should have equal lengths, but found '
+                        f'signal length = {len(signal)}, labels length = {len(labels)}')
+
+    return rate, signal, labels
+
+
+def get_max_id_in_dir(dir_path):
+    max_id = 0
+    for file in os.listdir(dir_path):
+        if os.path.isfile(os.path.join(dir_path, file)) and file.endswith('.png'):
+            max_id = max(max_id, int(file[:-4]))
+    return max_id
+
+
+def save_images(noise_images, speech_images, dir_path, spectrogram, sample_pxl_width):
+    noise_dir = os.path.join(dir_path, VoiceActivityDetector.IDX_TO_LABEL[0])
+    speech_dir = os.path.join(dir_path, VoiceActivityDetector.IDX_TO_LABEL[1])
+
+    print(f'Saving into\n\'{noise_dir}\' for noise\n\'{speech_dir}\' for speech\n'
+          f'format: <id>.png\n')
+
+    print(f'Image size (HxW) = {spectrogram.shape[0]}x{sample_pxl_width}')
+
+    if not os.path.isdir(noise_dir):
+        os.mkdir(noise_dir)
+    if not os.path.isdir(speech_dir):
+        os.mkdir(speech_dir)
+
+    index = max(
+        get_max_id_in_dir(noise_dir),
+        get_max_id_in_dir(speech_dir)
+    )
+
+    for pxl_l in noise_images:
+        index += 1
+        path = os.path.join(noise_dir, str(index) + '.png')
+        Image.fromarray(spectrogram[:, pxl_l: pxl_l + sample_pxl_width, :]).save(path)
+
+    for pxl_l in speech_images:
+        index += 1
+        path = os.path.join(speech_dir, str(index) + '.png')
+        Image.fromarray(spectrogram[:, pxl_l: pxl_l + sample_pxl_width, :]).save(path)
