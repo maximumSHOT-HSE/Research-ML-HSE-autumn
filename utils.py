@@ -6,6 +6,8 @@ import scipy.io.wavfile
 from PIL import Image
 from matplotlib import cm
 
+import model
+
 
 def hz_to_mel(C1, C2, f):
     return C1 * np.log10(1 + f / C2)
@@ -181,8 +183,8 @@ def get_max_id_in_dir(dir_path):
 
 
 def save_images(noise_images, speech_images, dir_path, spectrogram, sample_pxl_width):
-    noise_dir = os.path.join(dir_path, VoiceActivityDetector.IDX_TO_LABEL[0])
-    speech_dir = os.path.join(dir_path, VoiceActivityDetector.IDX_TO_LABEL[1])
+    noise_dir = os.path.join(dir_path, model.VoiceActivityDetector.IDX_TO_LABEL[0])
+    speech_dir = os.path.join(dir_path, model.VoiceActivityDetector.IDX_TO_LABEL[1])
 
     print(f'Saving into\n\'{noise_dir}\' for noise\n\'{speech_dir}\' for speech\n'
           f'format: <id>.png\n')

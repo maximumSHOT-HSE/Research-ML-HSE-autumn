@@ -1,6 +1,4 @@
 import argparse
-import typing
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,12 +26,8 @@ class VadDataset(Dataset):
 
     def __getitem__(self, index):
         pxl_l = self.pxl_ls[index]
-        x = Image.fromarray(spectrogram[:, pxl_l: pxl_l + sample_pxl_width, :])
-
-        x.save('123.png')
-        x = Image.open('123.png')
-        x.load()
-
+        x = spectrogram[:, pxl_l: pxl_l + sample_pxl_width, :]
+        x = Image.fromarray(x)
         x = VoiceActivityDetector.from_picture_to_tensor(x)
         return x
 
@@ -81,8 +75,8 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[int(50 * rate): int(70 * rate)]
-    labels = labels[int(50 * rate): int(70 * rate)]
+    signal = signal[int(50 * rate): int(1000 * rate)]
+    labels = labels[int(50 * rate): int(1000 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
     # ========================================================
     spectrogram = build_spectrogram(
@@ -122,27 +116,25 @@ if __name__ == '__main__':
 
     pred_labels = np.array([])
 
+    detector.net.eval()
     detector.to_device()
     for inputs in data_loader:
         inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
 
-        with torch.set_grad_enabled(False):
+        with torch.no_grad():
             outputs = detector.net(inputs)
             val_preds = torch.argmax(outputs, 1)
             val_preds = val_preds.cpu().numpy()
             pred_labels = np.append(pred_labels, val_preds)
 
-    print(pred_labels.shape)
-
     total = np.zeros(len(signal) + 1)
     speech = np.zeros(len(signal) + 1)
-    index = 0
 
     for l, pred_label in zip(ls, pred_labels):
         r = l + net_window_size_f
         total[l] += 1
         total[r] -= 1
-        if pred_labels[index]:
+        if pred_label:
             speech[l] += 1
             speech[r] -= 1
 
@@ -150,7 +142,7 @@ if __name__ == '__main__':
     total = np.cumsum(total)[:-1]
     prediction = (speech / total > 0.5).astype(int).reshape(-1, 1)
 
-    print(f'{np.sum(prediction)}  !!!!')
+    print(f'test accuracy = {100 * np.sum(prediction == labels) / len(prediction)}%')
 
     # ========================================================
     plt.figure(figsize=(20, 20))

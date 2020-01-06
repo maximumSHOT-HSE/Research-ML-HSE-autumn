@@ -27,7 +27,10 @@ class VoiceActivityDetector:
 
     MEAN = np.array([0.485, 0.456, 0.406])
     STD = np.array([0.229, 0.224, 0.225])
-    DEVICE = torch.device('cuda')
+    DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    def to_device(self):
+        self.net = self.net.to(VoiceActivityDetector.DEVICE)
 
     @staticmethod
     def from_picture_to_tensor(picture):
@@ -57,7 +60,7 @@ class VoiceActivityDetector:
         )
 
     def load(self, path: str):
-        dump = torch.load(path)
+        dump = torch.load(path, map_location=VoiceActivityDetector.DEVICE)
         self.params = dump['params']
         self.net.load_state_dict(dump['model_state_dict'])
 
@@ -118,7 +121,7 @@ class VoiceActivityDetector:
         return cum_loss, accuracy
 
     def fit(self, train_loader, val_loader, epochs, sessions_dir, session_id, verbose=True):
-        self.net = self.net.to(VoiceActivityDetector.DEVICE)
+        self.to_device()
 
         optimizer = torch.optim.Adam(self.net.parameters())
         loss_f = nn.CrossEntropyLoss()
@@ -136,3 +139,10 @@ class VoiceActivityDetector:
                 utils.save_model(sessions_dir, session_id, self)
 
         return history
+
+    def predict(self, inputs):
+        inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
+        with torch.set_grad_enabled(False):
+            outputs = self.net(inputs)
+            print(outputs)
+            return torch.argmax(outputs, 1)

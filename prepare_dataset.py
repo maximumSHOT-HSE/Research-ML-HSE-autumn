@@ -36,7 +36,7 @@ if __name__ == '__main__':
         help='Path to the raw audio file in .wav format'
     )
     parser.add_argument(
-        'dir',
+        'dataset_dir',
         type=str,
         help='Path to the directory, where samples will be stored'
     )
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     sample_pxl_width = detector.params['net_window_size'] * rate * frames_to_pixels_ratio
     sample_pxl_width = int(np.ceil(sample_pxl_width))
 
-    for l in range(int(16000 * 3.6), signal_size_f - net_window_size_f + 1, net_step_size_f):
+    for l in range(0, signal_size_f - net_window_size_f + 1, net_step_size_f):
         r = l + net_window_size_f
         # [l, r)
 
@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
         pxl_l = int(np.ceil(l * frames_to_pixels_ratio))
         pxl_r = pxl_l + sample_pxl_width
-        if pxl_r >= spectrogram_pxl_width:
+        if pxl_r > spectrogram_pxl_width:
             break
 
         if img_label:  # speech
@@ -101,4 +101,4 @@ if __name__ == '__main__':
     speech_images = speech_images[: min(len(speech_images), args.max_speech_samples)]
     noise_images = noise_images[: min(len(noise_images), args.max_noise_samples)]
 
-    save_images(noise_images, speech_images, args.dir, spectrogram, sample_pxl_width)
+    save_images(noise_images, speech_images, args.dataset_dir, spectrogram, sample_pxl_width)
