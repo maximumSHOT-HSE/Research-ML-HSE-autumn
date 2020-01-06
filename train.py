@@ -10,7 +10,7 @@ import utils
 from model import VoiceActivityDetector
 
 
-class VadDataset(Dataset):
+class TrainVadDataset(Dataset):
 
     DATA_MODES = ['train', 'val', 'test']
 
@@ -18,7 +18,7 @@ class VadDataset(Dataset):
         super().__init__()
         self.files = sorted(files)
 
-        if mode not in VadDataset.DATA_MODES:
+        if mode not in TrainVadDataset.DATA_MODES:
             raise Exception(f'Unrecognized mode = {mode}')
 
         self.mode = mode
@@ -122,8 +122,8 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    train_dataset = VadDataset(X_train, mode='train')
-    val_dataset = VadDataset(X_val, mode='val')
+    train_dataset = TrainVadDataset(X_train, mode='train')
+    val_dataset = TrainVadDataset(X_val, mode='val')
 
     train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, args.batch_size, shuffle=False)

@@ -10,7 +10,7 @@ from model import VoiceActivityDetector
 from utils import load_labeled_audio, build_spectrogram
 
 
-class VadDataset(Dataset):
+class RealTimeVadDataset(Dataset):
 
     DATA_MODES = ['train', 'val', 'test']
 
@@ -75,8 +75,8 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[int(50 * rate): int(1000 * rate)]
-    labels = labels[int(50 * rate): int(1000 * rate)]
+    signal = signal[int(22 * 60 * rate): int(26 * 60 * rate)]
+    labels = labels[int(22 * 60 * rate): int(26 * 60 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
     # ========================================================
     spectrogram = build_spectrogram(
@@ -111,7 +111,7 @@ if __name__ == '__main__':
         pxl_ls.append(pxl_l)
         ls.append(l)
 
-    dataset = VadDataset(spectrogram, sample_pxl_width, pxl_ls)
+    dataset = RealTimeVadDataset(spectrogram, sample_pxl_width, pxl_ls)
     data_loader = DataLoader(dataset, batch_size=40, shuffle=False)
 
     pred_labels = np.array([])
