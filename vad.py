@@ -1,11 +1,41 @@
 import argparse
+import typing
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader
 
-# from model import VoiceActivityDetector
+from model import VoiceActivityDetector
 from utils import load_labeled_audio, build_spectrogram
-# import torch
+
+
+class VadDataset(Dataset):
+
+    DATA_MODES = ['train', 'val', 'test']
+
+    def __init__(self, spectrogram, sample_pxl_width, pxl_ls):
+        super().__init__()
+        self.spectrogram = spectrogram
+        self.sample_pxl_width = sample_pxl_width
+        self.pxl_ls = pxl_ls
+        self.len = len(pxl_ls)
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, index):
+        pxl_l = self.pxl_ls[index]
+        x = Image.fromarray(spectrogram[:, pxl_l: pxl_l + sample_pxl_width, :])
+
+        x.save('123.png')
+        x = Image.open('123.png')
+        x.load()
+
+        x = VoiceActivityDetector.from_picture_to_tensor(x)
+        return x
 
 
 if __name__ == '__main__':
@@ -45,24 +75,92 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    # detector = VoiceActivityDetector()
-    # detector.load(args.model_path)
+    # ========================================================
+    detector = VoiceActivityDetector()
+    detector.load(args.model_path)
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[0: int(100 * rate)]
-    labels = labels[0: int(100 * rate)]
+    signal = signal[int(50 * rate): int(70 * rate)]
+    labels = labels[int(50 * rate): int(70 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
+    # ========================================================
+    spectrogram = build_spectrogram(
+        signal,
+        rate,
+        n_filters=detector.params['n_filters'],
+        window_size_s=detector.params['window_size'],
+        step_size_ratio=detector.params['step_size_ratio']
+    )
+    # ========================================================
+    net_window_size_f = int(rate * detector.params['net_window_size'])
+    net_step_size_f = int(net_window_size_f * detector.params['net_step_size_ratio'])
 
-    # spectrogram = build_spectrogram(
-    #     signal,
-    #     rate,
-    #     n_filters=detector.params['n_filters'],
-    #     window_size_s=detector.params['window_size'],
-    #     step_size_ratio=detector.params['step_size_ratio']
-    # )
+    signal_size_f = len(signal)
 
+    spectrogram_pxl_width = spectrogram.shape[1]
+    frames_to_pixels_ratio = spectrogram_pxl_width / signal_size_f
+    sample_pxl_width = detector.params['net_window_size'] * rate * frames_to_pixels_ratio
+    sample_pxl_width = int(np.ceil(sample_pxl_width))
+    # ========================================================
+    pxl_ls = []
+    ls = []
+    for l in range(0, signal_size_f - net_window_size_f + 1, net_step_size_f):
+        r = l + net_window_size_f
+        # [l, r)
+
+        pxl_l = int(np.ceil(l * frames_to_pixels_ratio))
+        pxl_r = pxl_l + sample_pxl_width
+        if pxl_r > spectrogram_pxl_width:
+            break
+
+        pxl_ls.append(pxl_l)
+        ls.append(l)
+
+    dataset = VadDataset(spectrogram, sample_pxl_width, pxl_ls)
+    data_loader = DataLoader(dataset, batch_size=40, shuffle=False)
+
+    pred_labels = np.array([])
+
+    detector.to_device()
+    for inputs in data_loader:
+        inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
+
+        with torch.set_grad_enabled(False):
+            outputs = detector.net(inputs)
+            val_preds = torch.argmax(outputs, 1)
+            val_preds = val_preds.cpu().numpy()
+            pred_labels = np.append(pred_labels, val_preds)
+
+    print(pred_labels.shape)
+
+    total = np.zeros(len(signal) + 1)
+    speech = np.zeros(len(signal) + 1)
+    index = 0
+
+    for l, pred_label in zip(ls, pred_labels):
+        r = l + net_window_size_f
+        total[l] += 1
+        total[r] -= 1
+        if pred_labels[index]:
+            speech[l] += 1
+            speech[r] -= 1
+
+    speech = np.cumsum(speech)[:-1]
+    total = np.cumsum(total)[:-1]
+    prediction = (speech / total > 0.5).astype(int).reshape(-1, 1)
+
+    print(f'{np.sum(prediction)}  !!!!')
+
+    # ========================================================
+    plt.figure(figsize=(20, 20))
+
+    plt.subplot(211)
     plt.plot(ts, signal, label='signal')
     plt.plot(ts, labels * 0.1 + 1, label='ground truth')
+    plt.plot(ts, prediction * 0.1 + 0.5, label='prediction')
+    plt.subplot(212)
+    plt.imshow(spectrogram)
+    plt.legend()
 
     plt.show()
