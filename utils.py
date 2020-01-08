@@ -24,30 +24,65 @@ def find_nfft(window_size_f):
     return nfft
 
 
+def calculate_spectrogram_params(
+        window_size_s,
+        step_size_ratio,
+        rate
+):
+    step_size_s = window_size_s * step_size_ratio
+    window_size_f = int(window_size_s * rate)
+    step_size_f = int(step_size_s * rate)
+    return window_size_f, step_size_f
+
+
+def calculate_num_windows(
+        signal_size,
+        window_size,
+        step_size
+):
+    if signal_size < window_size:
+        return 1
+    else:
+        return (signal_size - window_size + step_size - 1) // step_size + 1
+
+
+def calculate_coverage_size(num_windows, step_size, window_size):
+    return (num_windows - 1) * step_size + window_size
+
+
 # takes signal, apply algorithm, returns image of shape WxHx3 with values in [0, 255]
 def build_spectrogram(
         signal,
         rate,
         n_filters=40,
         window_size_s=0.025,
-        step_size_ratio=0.5
+        step_size_ratio=0.5,
+        last_prev_frame_signal = 0
 ):
-    signal = np.append(signal[0], signal[1:] - 0.96 * signal[:-1])
-
-    step_size_s = window_size_s * step_size_ratio
-
+    signal = np.append(signal[0] - 0.96 * last_prev_frame_signal, signal[1:] - 0.96 * signal[:-1])
     signal_size_f = len(signal)
-    window_size_f = int(window_size_s * rate)
-    step_size_f = int(step_size_s * rate)
-    num_windows = int(np.ceil(max(0, signal_size_f + 1 - window_size_f) / step_size_f)) + 1
 
-    pad_signal_size_f = (num_windows - 1) * step_size_f + window_size_f
+    window_size_f, step_size_f = calculate_spectrogram_params(
+        window_size_s,
+        step_size_ratio,
+        rate
+    )
+
+    num_windows = calculate_num_windows(signal_size_f, window_size_f, step_size_f)
+
+    # print(f'num_windows = {num_windows}')
+
+    pad_signal_size_f = calculate_coverage_size(num_windows, step_size_f, window_size_f)
     pad_signal = np.append(signal, np.zeros((pad_signal_size_f - signal_size_f)))
+
+    # print(f'padding size = {pad_signal_size_f - signal_size_f}')
 
     indices = np.tile(np.arange(window_size_f), (num_windows, 1)) + np.tile(
         np.arange(0, num_windows * step_size_f, step_size_f), (window_size_f, 1)).T
     windows = pad_signal[indices]
     windows *= np.hamming(window_size_f)
+
+    # print(windows.shape)
 
     n_fft = find_nfft(window_size_f)
 
@@ -82,6 +117,8 @@ def build_spectrogram(
     # after: [0, 1]
 
     img = (cm.jet(filter_banks.T) * 255).astype(dtype='uint8')
+
+    # print(img.shape)
 
     return np.clip(img[:, :, :3], 0, 255)
 

@@ -2,7 +2,6 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 
@@ -10,7 +9,7 @@ from model import VoiceActivityDetector
 from utils import load_labeled_audio, build_spectrogram
 
 
-class RealTimeVadDataset(Dataset):
+class PredictVadDataset(Dataset):
 
     DATA_MODES = ['train', 'val', 'test']
 
@@ -75,9 +74,10 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[int(22 * 60 * rate): int(26 * 60 * rate)]
-    labels = labels[int(22 * 60 * rate): int(26 * 60 * rate)]
+    signal = signal[int(300 * rate): int(350 * rate)]
+    labels = labels[int(300 * rate): int(350 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
+
     # ========================================================
     spectrogram = build_spectrogram(
         signal,
@@ -111,21 +111,10 @@ if __name__ == '__main__':
         pxl_ls.append(pxl_l)
         ls.append(l)
 
-    dataset = RealTimeVadDataset(spectrogram, sample_pxl_width, pxl_ls)
+    dataset = PredictVadDataset(spectrogram, sample_pxl_width, pxl_ls)
     data_loader = DataLoader(dataset, batch_size=40, shuffle=False)
 
-    pred_labels = np.array([])
-
-    detector.net.eval()
-    detector.to_device()
-    for inputs in data_loader:
-        inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
-
-        with torch.no_grad():
-            outputs = detector.net(inputs)
-            val_preds = torch.argmax(outputs, 1)
-            val_preds = val_preds.cpu().numpy()
-            pred_labels = np.append(pred_labels, val_preds)
+    pred_labels = detector.predict(data_loader)
 
     total = np.zeros(len(signal) + 1)
     speech = np.zeros(len(signal) + 1)
@@ -149,8 +138,8 @@ if __name__ == '__main__':
 
     plt.subplot(211)
     plt.plot(ts, signal, label='signal')
-    plt.plot(ts, labels * 0.1 + 1, label='ground truth')
-    plt.plot(ts, prediction * 0.1 + 0.5, label='prediction')
+    plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
+    plt.plot(ts, prediction * 0.1 + 1.1, label='prediction')
     plt.subplot(212)
     plt.imshow(spectrogram)
     plt.legend()
