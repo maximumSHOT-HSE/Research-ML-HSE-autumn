@@ -11,6 +11,7 @@ from cnn import CNN
 import matplotlib.pyplot as plt
 from real_time_vad_dataset import RealTimeVadDataset
 from torch.utils.data import Dataset, DataLoader
+from StreamBuffer import StreamBuffer
 
 
 class VoiceActivityDetector:
@@ -34,7 +35,8 @@ class VoiceActivityDetector:
 
     MEAN = np.array([0.485, 0.456, 0.406])
     STD = np.array([0.229, 0.224, 0.225])
-    DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    # DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    DEVICE = torch.device('cpu')
 
     @staticmethod
     def from_picture_to_tensor(picture):
@@ -159,14 +161,9 @@ class VoiceActivityDetector:
 
         return pred_labels
 
-    def eval(self, rate):
+    def setup(self, rate):
         self.rate = rate
-        self.frames_buffer = np.array([], dtype=np.float64)
-
-        self.speech_votes = np.array([], dtype=np.float64)
-        self.total_votes = np.array([], dtype=np.float64)
-        self.labels = np.array([], dtype=int)
-
+        
         self.window_size_f, self.step_size_f = utils.calculate_spectrogram_params(
             self.params['window_size'],
             self.params['step_size_ratio'],
@@ -176,45 +173,26 @@ class VoiceActivityDetector:
         self.net_window_size_f = int(rate * self.params['net_window_size'])
         self.net_step_size_f = int(self.net_window_size_f * self.params['net_step_size_ratio'])
 
-        self.spectrogram = None
-        self.last_prev_frame_signal = 0
-
-    def flush_predictions(self, c=np.inf):
-        c = min(c, len(self.total_votes))
-
-        cut_total_votes, self.total_votes = np.split(self.total_votes, [c])
-        cut_speech_votes, self.speech_votes = np.split(self.speech_votes, [c])
-
-        cut_total_votes = np.cumsum(cut_total_votes)
-        cut_speech_votes = np.cumsum(cut_speech_votes)
-
-        self.labels = np.append(self.labels, (cut_speech_votes / (cut_total_votes + 1) > 0).astype(dtype=int))
-
-        if len(cut_total_votes) > 0 and len(self.total_votes) > 0:
-            self.total_votes[0] += cut_total_votes[-1]
-        if len(cut_speech_votes) > 0 and len(self.speech_votes) > 0:
-            self.speech_votes[0] += cut_speech_votes[-1]
-
-    def append_votes(self):
+    def append_votes(self, stream_buffer):
         spectrogram_size_f = utils.calculate_coverage_size(
-            self.spectrogram.shape[1],
+            stream_buffer.spectrogram.shape[1],
             self.step_size_f,
             self.window_size_f
         )
-        ratio = self.spectrogram.shape[1] / spectrogram_size_f
+        ratio = stream_buffer.spectrogram.shape[1] / spectrogram_size_f
 
         net_window_size_pxl = int(np.ceil(self.net_window_size_f * ratio))
         net_step_size_pxl = int(np.ceil(self.net_step_size_f * ratio))
 
         cut_num_windows, cut_size_pxl = VoiceActivityDetector.calculate_cut_part_params(
-            self.spectrogram.shape[1],
+            stream_buffer.spectrogram.shape[1],
             net_window_size_pxl,
             net_step_size_pxl
         )
 
         if cut_num_windows > 0:
-            cut_part = self.spectrogram[:, :cut_size_pxl, :]
-            self.spectrogram = self.spectrogram[:, cut_size_pxl - net_window_size_pxl + net_step_size_pxl:, :]
+            cut_part = stream_buffer.spectrogram[:, :cut_size_pxl, :]
+            stream_buffer.spectrogram = stream_buffer.spectrogram[:, cut_size_pxl - net_window_size_pxl + net_step_size_pxl:, :]
             pxl_ls = np.arange(0, cut_part.shape[1], net_step_size_pxl)
             dataset = RealTimeVadDataset(cut_part, net_window_size_pxl, pxl_ls)
             data_loader = DataLoader(dataset, batch_size=len(pxl_ls), shuffle=False)
@@ -223,27 +201,27 @@ class VoiceActivityDetector:
             for pred_label, pxl_l in zip(pred_labels, pxl_ls):
                 pxl_r = pxl_l + net_step_size_pxl
                 l = max(0, int(np.floor(pxl_l / ratio)))
-                r = min(len(self.speech_votes) - 1, int(np.ceil(pxl_r / ratio)))
+                r = min(len(stream_buffer.speech_votes) - 1, int(np.ceil(pxl_r / ratio)))
                 if l >= r:
                     continue
                 mxl = l
-                self.total_votes[l] += 1
-                self.total_votes[r] -= 1
+                stream_buffer.total_votes[l] += 1
+                stream_buffer.total_votes[r] -= 1
                 if pred_label:
-                    self.speech_votes[l] += 1
-                    self.speech_votes[r] -= 1
+                    stream_buffer.speech_votes[l] += 1
+                    stream_buffer.speech_votes[r] -= 1
 
-            self.flush_predictions(mxl)
+            self.flush_predictions(stream_buffer, mxl)
 
-    def append_spectrogram(self):
+    def append_spectrogram(self, stream_buffer):
         cut_num_windows, cut_size_f = VoiceActivityDetector.calculate_cut_part_params(
-            len(self.frames_buffer),
+            len(stream_buffer.frames_buffer),
             self.window_size_f,
             self.step_size_f
         )
         if cut_num_windows > 0:
-            cut_part = self.frames_buffer[:cut_size_f]
-            self.frames_buffer = self.frames_buffer[cut_size_f - self.window_size_f + self.step_size_f:]
+            cut_part = stream_buffer.frames_buffer[:cut_size_f]
+            stream_buffer.frames_buffer = stream_buffer.frames_buffer[cut_size_f - self.window_size_f + self.step_size_f:]
 
             img = utils.build_spectrogram(
                 cut_part,
@@ -251,32 +229,43 @@ class VoiceActivityDetector:
                 self.params['n_filters'],
                 self.params['window_size'],
                 self.params['step_size_ratio'],
-                last_prev_frame_signal=self.last_prev_frame_signal
+                last_prev_frame_signal=stream_buffer.last_prev_frame_signal
             )
 
-            self.last_prev_frame_signal = cut_part[-1]
+            stream_buffer.last_prev_frame_signal = cut_part[-1]
 
-            if self.spectrogram is None:
-                self.spectrogram = img
+            if stream_buffer.spectrogram is None:
+                stream_buffer.spectrogram = img
             else:
-                self.spectrogram = np.concatenate((self.spectrogram, img), axis=1)
-
-            # plt.imshow(self.spectrogram)
-            # plt.show()
+                stream_buffer.spectrogram = np.concatenate((stream_buffer.spectrogram, img), axis=1)
 
     # should be called after 'eval(rate)'
-    def append(self, added_frames, show=False):
-        self.frames_buffer = np.append(self.frames_buffer, added_frames)
-        self.speech_votes = np.append(self.speech_votes, np.zeros_like(added_frames))
-        self.total_votes = np.append(self.total_votes, np.zeros_like(added_frames))
+    def append(self, added_frames, stream_buffer):
+        stream_buffer.append(added_frames)
 
-        self.append_spectrogram()
-        self.append_votes()
+        self.append_spectrogram(stream_buffer)
+        self.append_votes(stream_buffer)
 
-    def query(self):
-        result = self.labels
-        self.labels = np.array([], dtype=int)
+    def query(self, stream_buffer):
+        result = stream_buffer.labels
+        stream_buffer.labels = np.array([], dtype=int)
         return result
+
+    def flush_predictions(self, stream_buffer, c=np.inf):
+        c = min(c, len(stream_buffer.total_votes))
+
+        cut_total_votes, stream_buffer.total_votes = np.split(stream_buffer.total_votes, [c])
+        cut_speech_votes, stream_buffer.speech_votes = np.split(stream_buffer.speech_votes, [c])
+
+        cut_total_votes = np.cumsum(cut_total_votes)
+        cut_speech_votes = np.cumsum(cut_speech_votes)
+
+        stream_buffer.labels = np.append(stream_buffer.labels, (cut_speech_votes / (cut_total_votes + 1) > 0).astype(dtype=int))
+
+        if len(cut_total_votes) > 0 and len(stream_buffer.total_votes) > 0:
+            stream_buffer.total_votes[0] += cut_total_votes[-1]
+        if len(cut_speech_votes) > 0 and len(stream_buffer.speech_votes) > 0:
+            stream_buffer.speech_votes[0] += cut_speech_votes[-1]
 
     @staticmethod
     def calculate_cut_part_params(size, window_size, step_size):

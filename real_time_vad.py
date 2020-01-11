@@ -1,10 +1,39 @@
 import argparse
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from model import VoiceActivityDetector
 from utils import load_labeled_audio
+from StreamBuffer import StreamBuffer
+
+
+def snr(a):
+    a = np.asanyarray(a)
+    m = a.mean()
+    sd = a.std()
+    return np.where(sd == 0, 0, m / sd)
+
+
+def remove_short_pauses(signal, l):
+    result = np.copy(signal)
+    n = len(result)
+    same = 0
+    previous = signal[0]
+    for i in range(n):
+        if i > 0 and signal[i] == signal[i - 1]:
+            same += 1
+        else:
+            same = 1
+
+        if same < l:
+            result[i] = previous
+        else:
+            previous = result[i]
+
+    return result
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -55,29 +84,69 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    # signal = signal[int(300 * rate): int(350 * rate)]
-    # labels = labels[int(300 * rate): int(350 * rate)]
+    signal = signal[int(300 * rate): int(350 * rate)]
+    labels = labels[int(300 * rate): int(350 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
 
-    detector.eval(rate)
+    detector.setup(rate)
+    stream_buffer = StreamBuffer(rate)
 
     buffer_size_f = int(np.ceil(rate * args.buffer_size))
     signal_size_f = len(signal)
 
     pred = np.array([], dtype=int)
 
-    for i in range(0, signal_size_f, buffer_size_f):
-        piece = signal[i: min(i + buffer_size_f, signal_size_f)]
-        detector.append(piece, i + buffer_size_f >= signal_size_f)
-        pred = np.append(pred, detector.query())
+    history = []
 
-    detector.flush_predictions()
-    pred = np.append(pred, detector.query())
+    for i in range(0, signal_size_f, buffer_size_f):
+        # st = time.time()
+        piece = signal[i: min(i + buffer_size_f, signal_size_f)]
+        # fn = time.time()
+
+        st = time.time()
+        detector.append(piece, stream_buffer)
+        pred = np.append(pred, detector.query(stream_buffer))
+        fn = time.time()
+
+        history.append(fn - st)
+
+    print(f'mean time = {np.mean(history)}')
+
+    detector.flush_predictions(stream_buffer)
+    pred = np.append(pred, detector.query(stream_buffer))
 
     labels = labels.reshape(-1)
     pred = pred.reshape(-1)
 
-    print(np.sum(labels == pred) / len(labels))
+    pred = remove_short_pauses(pred, int(rate * 0.2))
+
+    tp = 1
+    tn = 1
+    fp = 1
+    fn = 1
+
+    for y_target, y_pred in zip(labels, pred):
+        if y_target == 1:
+            if y_pred == 1:
+                tp += 1
+            else:
+                fn += 1
+        else:
+            if y_pred == 1:
+                fp += 1
+            else:
+                tn += 1
+
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    fpr = fp / (fp + tn)
+    accuracy = (tp + tn) / (tp + fp + tn + fn)
+
+    print(f'precision = {precision}')
+    print(f'recall = {recall}')
+    print(f'fpr = {fpr}')
+    print(f'accuracy = {accuracy}')
+    print(f'SNR = {snr(signal)}')
 
     # plt.figure(figsize=(20, 20))
     #
