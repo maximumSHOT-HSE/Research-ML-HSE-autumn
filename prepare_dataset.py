@@ -53,6 +53,10 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
+    X = int(rate * 60 * 10)
+    signal = signal[: X]
+    labels = labels[: X]
+
     pref_sum_labels = np.cumsum(labels)
 
     net_window_size_f = int(rate * detector.params['net_window_size'])

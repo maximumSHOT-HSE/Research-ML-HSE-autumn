@@ -35,7 +35,6 @@ class VoiceActivityDetector:
 
     MEAN = np.array([0.485, 0.456, 0.406])
     STD = np.array([0.229, 0.224, 0.225])
-    # DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     DEVICE = torch.device('cpu')
 
     @staticmethod
@@ -101,7 +100,7 @@ class VoiceActivityDetector:
 
         return cum_loss, accuracy
 
-    def validate_epoch(self, val_loader, optimizer, loss_f):
+    def validate_epoch(self, val_loader, loss_f):
         self.net.eval()
 
         cum_loss = 0.0
@@ -112,7 +111,7 @@ class VoiceActivityDetector:
             inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
             targets = targets.to(device=VoiceActivityDetector.DEVICE, dtype=torch.long)
 
-            with torch.set_grad_enabled(False):
+            with torch.no_grad():
                 outputs = self.net(inputs)
                 loss = loss_f(outputs, targets)
                 val_preds = torch.argmax(outputs, 1)
@@ -135,14 +134,18 @@ class VoiceActivityDetector:
         history = []
         best_val_loss = np.inf
 
-        for _ in tqdm(range(epochs)):
+        for epoch in tqdm(range(epochs)):
             train_loss, train_accuracy = self.train_epoch(train_loader, optimizer, loss_f)
-            val_loss, val_accuracy = self.validate_epoch(val_loader, optimizer, loss_f)
+            val_loss, val_accuracy = self.validate_epoch(val_loader, loss_f)
             history.append((train_loss, train_accuracy, val_loss, val_accuracy))
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 utils.save_model(sessions_dir, session_id, self)
+
+            if verbose:
+                print(f'epoch {epoch + 1}: train loss = {train_loss}, train accuracy = {train_accuracy}, '
+                      f'val loss = {val_loss}, val accuracy = {val_accuracy}')
 
         return history
 
@@ -150,6 +153,7 @@ class VoiceActivityDetector:
         self.net.eval()
         self.net = self.net.to(VoiceActivityDetector.DEVICE)
         pred_labels = np.array([], dtype=int)
+
         for inputs in data_loader:
             inputs = inputs.to(device=VoiceActivityDetector.DEVICE, dtype=torch.float)
 
@@ -179,6 +183,7 @@ class VoiceActivityDetector:
             self.step_size_f,
             self.window_size_f
         )
+
         ratio = stream_buffer.spectrogram.shape[1] / spectrogram_size_f
 
         net_window_size_pxl = int(np.ceil(self.net_window_size_f * ratio))
@@ -193,10 +198,13 @@ class VoiceActivityDetector:
         if cut_num_windows > 0:
             cut_part = stream_buffer.spectrogram[:, :cut_size_pxl, :]
             stream_buffer.spectrogram = stream_buffer.spectrogram[:, cut_size_pxl - net_window_size_pxl + net_step_size_pxl:, :]
+
             pxl_ls = np.arange(0, cut_part.shape[1], net_step_size_pxl)
+
             dataset = RealTimeVadDataset(cut_part, net_window_size_pxl, pxl_ls)
             data_loader = DataLoader(dataset, batch_size=len(pxl_ls), shuffle=False)
             pred_labels = self.predict(data_loader)
+
             mxl = 0
             for pred_label, pxl_l in zip(pred_labels, pxl_ls):
                 pxl_r = pxl_l + net_step_size_pxl
@@ -221,6 +229,7 @@ class VoiceActivityDetector:
         )
         if cut_num_windows > 0:
             cut_part = stream_buffer.frames_buffer[:cut_size_f]
+
             stream_buffer.frames_buffer = stream_buffer.frames_buffer[cut_size_f - self.window_size_f + self.step_size_f:]
 
             img = utils.build_spectrogram(
@@ -239,10 +248,9 @@ class VoiceActivityDetector:
             else:
                 stream_buffer.spectrogram = np.concatenate((stream_buffer.spectrogram, img), axis=1)
 
-    # should be called after 'eval(rate)'
+    # should be called after 'setup(rate)'
     def append(self, added_frames, stream_buffer):
         stream_buffer.append(added_frames)
-
         self.append_spectrogram(stream_buffer)
         self.append_votes(stream_buffer)
 

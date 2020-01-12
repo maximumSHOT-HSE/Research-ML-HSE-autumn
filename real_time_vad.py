@@ -1,5 +1,6 @@
 import argparse
 import time
+import torch
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,10 +61,9 @@ if __name__ == '__main__':
         help='The path to the .mat file where labels will be stored'
     )
     parser.add_argument(
-        '--device',
-        type=str,
-        help='Device type for computations',
-        default='cuda'
+        '--cuda',
+        type=bool,
+        default=False
     )
     parser.add_argument(
         '--statistics-path',
@@ -78,14 +78,21 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
+    if args.cuda and torch.cuda.is_available():
+        VoiceActivityDetector.DEVICE = torch.device('cuda')
+    else:
+        VoiceActivityDetector.DEVICE = torch.device('cpu')
+
+    print(f'Processing on: {VoiceActivityDetector.DEVICE}')
+
     # ========================================================
     detector = VoiceActivityDetector()
     detector.load(args.model_path)
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[int(300 * rate): int(350 * rate)]
-    labels = labels[int(300 * rate): int(350 * rate)]
+    signal = signal[int(200 * rate): int(250 * rate)]
+    labels = labels[int(200 * rate): int(250 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
 
     detector.setup(rate)
@@ -118,7 +125,7 @@ if __name__ == '__main__':
     labels = labels.reshape(-1)
     pred = pred.reshape(-1)
 
-    pred = remove_short_pauses(pred, int(rate * 0.2))
+    # pred = remove_short_pauses(pred, int(rate * 0.2))
 
     tp = 1
     tn = 1
@@ -148,12 +155,12 @@ if __name__ == '__main__':
     print(f'accuracy = {accuracy}')
     print(f'SNR = {snr(signal)}')
 
-    # plt.figure(figsize=(20, 20))
-    #
-    # plt.plot(ts, signal, label='signal')
-    # plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
-    # plt.plot(ts, pred * 0.1 + 1.1, label='prediction')
-    #
-    # plt.legend()
-    #
-    # plt.show()
+    plt.figure(figsize=(20, 20))
+
+    plt.plot(ts, signal, label='signal')
+    plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
+    plt.plot(ts, pred * 0.1 + 1.1, label='prediction')
+
+    plt.legend()
+
+    plt.show()

@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 import utils
 from model import VoiceActivityDetector
 
+import torch
 
 class TrainVadDataset(Dataset):
 
@@ -106,7 +107,19 @@ if __name__ == '__main__':
         type=int,
         default=10
     )
+    parser.add_argument(
+        '--cuda',
+        type=bool,
+        default=True
+    )
     args = parser.parse_args()
+
+    if args.cuda and torch.cuda.is_available():
+        VoiceActivityDetector.DEVICE = torch.device('cuda')
+    else:
+        VoiceActivityDetector.DEVICE = torch.device('cpu')
+
+    print(f'Processing on: {VoiceActivityDetector.DEVICE}')
 
     detector = VoiceActivityDetector()
     detector.load(args.model_path)
