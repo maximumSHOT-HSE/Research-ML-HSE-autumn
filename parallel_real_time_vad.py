@@ -40,12 +40,8 @@ def producer(stream_signals, block_size_f, sleep_time, queues):
 
         block = stream_signals[id][l: r]
 
-        # print(time.perf_counter() - prev_time[id])
-
         t0 = max(0, sleep_time - (time.perf_counter() - prev_time[id]))
         time.sleep(t0)
-
-        # print(t0)
 
         sending_time = time.perf_counter()
         prev_time[id] = sending_time
@@ -54,6 +50,7 @@ def producer(stream_signals, block_size_f, sleep_time, queues):
 
 def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
     max_delay = 0
+    min_delay = np.inf
     sum_delay = 0
     cnt_requests = 0
 
@@ -78,12 +75,22 @@ def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
             sum_delay += delay
             cnt_requests += 1
 
+            if cnt_requests > 500:
+                cnt_requests = 1
+                min_delay = np.inf
+                max_delay = 0
+                sum_delay = delay
+
             if delay > max_delay:
                 max_delay = delay
 
+            if delay < min_delay:
+                min_delay = delay
+
             with lock:
-                print(f'worker {worker_id} new max delay = {max_delay} on stream {stream_id},'
-                      f' new mean = {sum_delay / cnt_requests}')
+                # print(f'pred = {np.sum(pred)}')
+                print(f'worker {worker_id}, new max delay = {max_delay}, new min delay = {min_delay}'
+                      f' new mean = {sum_delay / cnt_requests} | on stream {stream_id}')
 
 
 if __name__ == '__main__':
