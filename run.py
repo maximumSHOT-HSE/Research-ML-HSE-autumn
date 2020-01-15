@@ -1,3 +1,4 @@
+from PIL import Image
 import scipy.io.wavfile
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -9,32 +10,42 @@ from model import VoiceActivityDetector
 
 if __name__ == '__main__':
 
-    LTIME = 40.4
-    RTIME = LTIME + 10
+    LTIME = 0.5
+    RTIME = LTIME + 1
+    WINDOW_SIZE_S = 0.05
+    STEP_SIZE_RATIO = 0.5
 
-    rate, signal = scipy.io.wavfile.read('raw_audio_data/park.wav')
+    rate, signal, labels = utils.load_labeled_audio('raw_audio_data/park.wav')
+
     signal = signal[int(LTIME * rate): int(RTIME * rate)]
+    labels = labels[int(LTIME * rate): int(RTIME * rate)]
 
-    spectrogram = utils.build_spectrogram(signal, rate, n_filters=40)
+    ts = np.linspace(LTIME, RTIME, num=len(signal))
 
-    # img = (cm.jet(spectrogram.T) * 255).astype(dtype='uint8')
+    plt.figure(figsize=(4, 3))
+    plt.plot(ts, signal, label='сигнал')
+    plt.plot(ts, labels * 0.1 + 0.75, label='речь')
 
+    # plt.show()
 
-    tmp = VoiceActivityDetector.from_picture_to_tensor(spectrogram)
+    # plt.xlabel('время, сек')
+    # plt.ylabel('магнитуда')
 
-    print(spectrogram.shape)
-    print()
-    print(tmp.size())
-
-    tmp = VoiceActivityDetector.from_tensor_to_picture(tmp)
-
-    plt.subplot(211)
-    plt.imshow(spectrogram)
-    plt.subplot(212)
-    plt.imshow(tmp)
+    # plt.legend()
     plt.show()
 
-    # print(spectrogram)
-    # print(spectrogram.min(), spectrogram.max())
+    # spectrogram = utils.build_spectrogram(
+    #     signal,
+    #     rate,
+    #     n_filters=80,
+    #     window_size_s=0.05,
+    #     step_size_ratio=0.25
+    # )
     #
-    # PIL.Image.fromarray(spectrogram).save('tmp.png')
+    # plt.figure(figsize=(4, 3))
+    #
+    # plt.xticks([])
+    # plt.yticks([])
+    #
+    # plt.imshow(spectrogram)
+    # plt.show()

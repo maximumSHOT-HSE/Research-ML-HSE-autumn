@@ -14,7 +14,7 @@ from threading import Thread
 
 def producer2(lock, stream_id, signal, block_size_f, sleep_time, queues):
     signal_size_f = len(signal)
-
+    
     for l in range(0, signal_size_f, block_size_f):
         r = min(signal_size_f, l + block_size_f)
         block = signal[l: r]
@@ -75,7 +75,7 @@ def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
             sum_delay += delay
             cnt_requests += 1
 
-            if cnt_requests > 500:
+            if cnt_requests > 2000:
                 cnt_requests = 1
                 min_delay = np.inf
                 max_delay = 0

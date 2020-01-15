@@ -8,6 +8,7 @@ import numpy as np
 from model import VoiceActivityDetector
 from utils import load_labeled_audio
 from StreamBuffer import StreamBuffer
+from tqdm import tqdm
 
 
 def snr(a):
@@ -94,8 +95,8 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    # signal = signal[int(0 * rate): int(250 * rate)]
-    # labels = labels[int(0 * rate): int(250 * rate)]
+    # signal = signal[int(500 * rate): int(750 * rate)]
+    # labels = labels[int(500 * rate): int(750 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
 
     detector.setup(rate)
@@ -108,7 +109,7 @@ if __name__ == '__main__':
 
     history = []
 
-    for i in range(0, signal_size_f, buffer_size_f):
+    for i in tqdm(range(0, signal_size_f, buffer_size_f)):
         # st = time.time()
         piece = signal[i: min(i + buffer_size_f, signal_size_f)]
         # fn = time.time()
@@ -128,7 +129,7 @@ if __name__ == '__main__':
     labels = labels.reshape(-1)
     pred = pred.reshape(-1)
 
-    pred = remove_short_pauses(pred, int(rate * 0.2))
+    # pred = remove_short_pauses(pred, int(rate * 0.5))
 
     tp = 1
     tn = 1
@@ -158,11 +159,11 @@ if __name__ == '__main__':
     print(f'accuracy = {accuracy}')
 
     # plt.figure(figsize=(20, 20))
-    #
+    
     # plt.plot(ts, signal, label='signal')
     # plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
     # plt.plot(ts, pred * 0.1 + 1.1, label='prediction')
-    #
+    
     # plt.legend()
-    #
+    
     # plt.show()

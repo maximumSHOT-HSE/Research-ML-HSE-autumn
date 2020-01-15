@@ -21,13 +21,13 @@ if __name__ == '__main__':
     parser.add_argument(
         '--max-speech-samples',
         type=int,
-        default=1000,
+        default=5000,
         help='The maximum number of samples with speech label to be saved'
     )
     parser.add_argument(
         '--max-noise-samples',
         type=int,
-        default=1500,
+        default=5000,
         help='The maximum number of samples with noise label to be saved'
     )
     parser.add_argument(
