@@ -2,6 +2,7 @@ import argparse
 import typing
 from pathlib import Path
 
+import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
@@ -9,7 +10,6 @@ from torch.utils.data import Dataset, DataLoader
 import utils
 from model import VoiceActivityDetector
 
-import torch
 
 class TrainVadDataset(Dataset):
 

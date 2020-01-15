@@ -53,7 +53,7 @@ if __name__ == '__main__':
     params: dict = copy.deepcopy(vars(args))
 
     params.pop('model_path')
-    params.pop('arc')  # TODO: process different architectures
+    params.pop('arc')
 
     detector = VoiceActivityDetector(params)
 

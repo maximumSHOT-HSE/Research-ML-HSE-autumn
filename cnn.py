@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class CNN(nn.Module):
 
-    IMG_SIZE = (32, 16)
+    IMG_SIZE = (32, 10)
 
     def __init__(self):
         super().__init__()
@@ -23,7 +23,7 @@ class CNN(nn.Module):
             nn.ReLU()
         )
 
-        self.lin1 = nn.Linear(448, 100)
+        self.lin1 = nn.Linear(96, 100)
         self.drop = nn.Dropout(p=0.25)
         self.lin2 = nn.Linear(100, 2)
         self.out = nn.Softmax()

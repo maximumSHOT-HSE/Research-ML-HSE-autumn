@@ -1,21 +1,13 @@
 import argparse
 import time
-import torch
 
-import matplotlib.pyplot as plt
 import numpy as np
-
-from model import VoiceActivityDetector
-from utils import load_labeled_audio
-from StreamBuffer import StreamBuffer
+import torch
 from tqdm import tqdm
 
-
-def snr(a):
-    a = np.asanyarray(a)
-    m = a.mean()
-    sd = a.std()
-    return np.where(sd == 0, 0, m / sd)
+from StreamBuffer import StreamBuffer
+from model import VoiceActivityDetector
+from utils import load_labeled_audio
 
 
 def remove_short_pauses(signal, l):
@@ -111,9 +103,7 @@ if __name__ == '__main__':
     history = []
 
     for i in tqdm(range(0, signal_size_f, buffer_size_f)):
-        # st = time.time()
         piece = signal[i: min(i + buffer_size_f, signal_size_f)]
-        # fn = time.time()
 
         st = time.time()
         detector.append(piece, stream_buffer)

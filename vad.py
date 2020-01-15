@@ -74,8 +74,6 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    signal = signal[int(300 * rate): int(350 * rate)]
-    labels = labels[int(300 * rate): int(350 * rate)]
     ts = np.linspace(0, len(signal) / rate, num=len(signal))
 
     # ========================================================
@@ -134,14 +132,15 @@ if __name__ == '__main__':
     print(f'test accuracy = {100 * np.sum(prediction == labels) / len(prediction)}%')
 
     # ========================================================
-    plt.figure(figsize=(20, 20))
+    if len(signal) < 100 * rate:
+        plt.figure(figsize=(20, 20))
 
-    plt.subplot(211)
-    plt.plot(ts, signal, label='signal')
-    plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
-    plt.plot(ts, prediction * 0.1 + 1.1, label='prediction')
-    plt.subplot(212)
-    plt.imshow(spectrogram)
-    plt.legend()
+        plt.subplot(211)
+        plt.plot(ts, signal, label='signal')
+        plt.plot(ts, labels * 0.1 + 1.3, label='ground truth')
+        plt.plot(ts, prediction * 0.1 + 1.1, label='prediction')
+        plt.subplot(212)
+        plt.imshow(spectrogram)
+        plt.legend()
 
-    plt.show()
+        plt.show()

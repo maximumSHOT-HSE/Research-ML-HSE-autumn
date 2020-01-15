@@ -1,26 +1,14 @@
-import numpy as np
 import argparse
 import time
 from multiprocessing import Process, Queue, Lock
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 
 from StreamBuffer import StreamBuffer
 from model import VoiceActivityDetector
 from utils import load_labeled_audio
-from threading import Thread
-
-
-def producer2(lock, stream_id, signal, block_size_f, sleep_time, queues):
-    signal_size_f = len(signal)
-    
-    for l in range(0, signal_size_f, block_size_f):
-        r = min(signal_size_f, l + block_size_f)
-        block = signal[l: r]
-        time.sleep(sleep_time)
-        start_time = time.perf_counter()
-        queues[stream_id].put((stream_id, block, start_time))
 
 
 def producer(stream_signals, block_size_f, sleep_time, queues):
@@ -48,15 +36,17 @@ def producer(stream_signals, block_size_f, sleep_time, queues):
         queues[id].put((block, sending_time))
 
 
-def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
+def worker(lock, worker_id, queues, buffers, detector, buffer_locks, max_requests, delay_stories, packet_size):
     max_delay = 0
     min_delay = np.inf
     sum_delay = 0
-    cnt_requests = 0
 
+    cnt_requests = 0
     _start = time.perf_counter()
 
-    while True:
+    img_index = 0
+
+    while cnt_requests < max_requests:
         for stream_id, queue in enumerate(queues):
             if queue.empty():
                 continue
@@ -81,10 +71,39 @@ def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
             if delay < min_delay:
                 min_delay = delay
 
+            delay_stories[stream_id].append (delay)
+
             with lock:
-                # print(f'pred = {np.sum(pred)}')
-                print(f'worker {worker_id}, new max delay = {max_delay}, new min delay = {min_delay}'
-                      f' new mean = {sum_delay / cnt_requests} | on stream {stream_id}')
+                print(f'{delay}')
+
+            if cnt_requests % 1000 == 0:
+                with lock:
+                    print(f'saving graph...')
+                    plt.figure(figsize=(15, 10))
+                    sz = min(len(story) for story in delay_stories)
+                    mn_delay = np.ones(sz, dtype=np.float64) * 1e3
+                    mx_delay = np.ones(sz, dtype=np.float64) * (-1e3)
+                    mean = np.zeros(sz)
+                    bs = []
+                    for story in delay_stories:
+                        b = np.array(story, dtype=np.float64)[: sz]
+                        bs.append(b)
+                    bs = np.array(bs)
+                    mn_delay = np.min(bs, axis=0)
+                    mx_delay = np.max(bs, axis=0)
+                    mean_delay = np.sum(bs, axis=0) / bs.shape[0]
+                    mean /= len(delay_stories)
+
+                    plt.title(f'{len(delay_stories)} streams, packet size = {packet_size} ms')
+
+                    plt.plot(mn_delay, label='min delay')
+                    plt.plot(mx_delay, label='max delay')
+                    plt.plot(mean_delay, label='mean delay')
+                    plt.ylabel('delay, ms')
+                    plt.xlabel('requests number')
+                    plt.legend()
+                    plt.savefig(f'report/w{worker_id}_{len(delay_stories)}_{img_index}.png')
+                    img_index += 1
 
 
 if __name__ == '__main__':
@@ -120,9 +139,15 @@ if __name__ == '__main__':
         help='Size of signal blocks in seconds'
     )
     parser.add_argument(
-        '--graph-runtime',
+        '--cut-audio-size',
         type=float,
-        default=None
+        default=20 * 60,
+        help='How many first seconds should be considered'
+    )
+    parser.add_argument(
+        '--max-requests',
+        type=int,
+        default=1000000000
     )
     args = parser.parse_args()
 
@@ -130,9 +155,9 @@ if __name__ == '__main__':
 
     rate, signal, labels = load_labeled_audio(args.audio_path)
 
-    # X = int(rate * 10)
-    # signal = signal[: X]
-    # labels = labels[: X]
+    X = int(rate * args.cut_audio_size)
+    signal = signal[: X]
+    labels = labels[: X]
 
     signal_size_f = len(signal)
 
@@ -155,19 +180,21 @@ if __name__ == '__main__':
         queues.append(q)
     lock = Lock()
 
-    producer = Process(target=producer, args=(stream_signals, block_size_f, block_size_s, queues))
+    delay_stories = []
+    for i in range(len(queues)):
+        delay_story = []
+        delay_stories.append(delay_story)
 
-    # producers = []
+    producer = Process(
+        target=producer,
+        args=(stream_signals, block_size_f, block_size_s, queues)
+    )
+
     buffers = []
     buffer_locks = []
     for i, stream in enumerate(stream_signals):
-        # p = Process(target=producer, args=(io_lock, i, s, block_size_f, block_size_s, queues))
-        # p = Thread(target=producer2, args=(lock, i, stream, block_size_f, block_size_s, queues))
-        # producers.append(p)
-
         stream_buffer = StreamBuffer(rate)
         buffers.append(stream_buffer)
-
         buffer_lock = Lock()
         buffer_locks.append(buffer_lock)
 
@@ -177,26 +204,17 @@ if __name__ == '__main__':
         detector.load(args.model_path)
         detector.setup(rate)
 
-        if i == 0:
-            print(f'MODEL\n{detector}')
-
-        w = Process(target=worker, args=(lock, i, queues, buffers, detector, buffer_locks))
-        w.daemon = True
-        # w = Thread(target=worker, args=(io_lock, i, queues, buffers, detector, buffer_locks))
-        # w.setDaemon(True)
+        w = Process(
+            target=worker,
+            args=(lock, i, queues, buffers, detector, buffer_locks,
+                  args.max_requests, delay_stories, args.block_size * 1000)
+        )
         workers.append(w)
 
+    producer.start()
     for w in workers:
         w.start()
 
-    producer.start()
     producer.join()
-
-    # for p in producers:
-    #     p.start()
-
-    # for p in producers:
-    #     p.join()
-
-    # for w in workers:
-    #     w.join()
+    for w in workers:
+        w.join()
