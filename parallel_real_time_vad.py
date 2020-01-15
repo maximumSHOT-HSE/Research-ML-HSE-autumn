@@ -75,12 +75,6 @@ def worker(lock, worker_id, queues, buffers, detector, buffer_locks):
             sum_delay += delay
             cnt_requests += 1
 
-            if cnt_requests > 2000:
-                cnt_requests = 1
-                min_delay = np.inf
-                max_delay = 0
-                sum_delay = delay
-
             if delay > max_delay:
                 max_delay = delay
 

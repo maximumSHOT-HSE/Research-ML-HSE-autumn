@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class CNN(nn.Module):
 
-    IMG_SIZE = (64, 16)
+    IMG_SIZE = (32, 16)
 
     def __init__(self):
         super().__init__()
